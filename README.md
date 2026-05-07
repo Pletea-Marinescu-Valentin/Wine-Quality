@@ -1,18 +1,31 @@
-# Wine Quality Classification — Multi-Method Benchmark
+# Improved Machine Learning Pipeline for Enhanced Wine Quality Classification
 
-IEEE International Conference paper benchmarking classical ML, gradient-boosted ensembles, deep tabular models (TabPFN), text transformers (DistilBERT, RoBERTa, DeBERTa-v3), local LLM zero-shot inference (Llama 3.1 8B), and multimodal late fusion on a large wine review corpus.
+IEEE conference paper benchmarking three open-weights instruction-tuned local LLMs on a
+3-class wine quality classification task, across four prompting strategies of increasing
+sophistication.
 
-**Active dataset:** [`james-burton/wine_reviews_ordinal`](https://huggingface.co/datasets/james-burton/wine_reviews_ordinal) — 105,154 expert wine reviews from WineMag.com (Burton 2023, originally compiled by Thoutt 2017), reformulated for ordinal classification.
+**Models compared** (all via Ollama, Q4\_K\_M quantisation, 7–8 B parameters each):
+- Llama 3.1 8B Instruct (Meta)
+- Qwen 2.5 7B Instruct (Alibaba)
+- Mistral 7B Instruct v0.3 (Mistral AI)
 
-**Task:** 3-class quality classification (Low / Medium / High) via tertile binning of WineEnthusiast points (80–100).
+**Prompting strategies:**
+- Zero-shot Chain-of-Thought
+- Few-shot CoT with K=3 random exemplars per class
+- Retrieval-Augmented Few-shot CoT (kNN K=5 via SBERT cosine similarity)
+- Self-consistency (majority vote of N=3 sampled CoT runs), applied to the winning
+  (model, strategy) combination
 
----
+**Active dataset:** [`james-burton/wine_reviews_ordinal`](https://huggingface.co/datasets/james-burton/wine_reviews_ordinal)
+105154 expert wine reviews from WineMag.com (Burton 2023, originally compiled by
+Thoutt 2017), reformulated for ordinal classification with predefined train / val / test
+splits.
 
-## Notebooks
+**Task:** 3-class quality classification (Low / Medium / High) via tertile binning of
+WineEnthusiast points (80–100).
 
-| File | Purpose |
-|---|---|---|
-| `wine_quality_classification.ipynb` | High-accuracy pipeline. Optuna 200-trial LightGBM, 100-trial CatBoost, DeBERTa-v3-base, sentence embeddings, target encoding, stacking, late fusion. |
+**Hardware:** RTX 5050 Laptop (8 GB VRAM), CUDA 12.8. All three LLMs fit comfortably at
+Q4\_K\_M; Ollama swaps models on demand within a single run.
 
 ---
 
@@ -43,11 +56,9 @@ python -c "import torch; print('CUDA:', torch.cuda.is_available()); print('GPU:'
 
 ```powershell
 conda activate wine-quality
-pip install datasets transformers accelerate xgboost lightgbm catboost ^
-            scikit-learn pandas numpy matplotlib seaborn optuna tqdm ^
-            sentence-transformers sentencepiece protobuf ^
-            ollama ipykernel jupyter
-pip install tabpfn   # optional - the TabPFN cell falls back gracefully if missing
+pip install datasets ollama sentence-transformers ^
+            pandas numpy matplotlib seaborn scipy scikit-learn tqdm ^
+            ipykernel jupyter
 ```
 
 ### 4. Register Jupyter Kernel for VSCode
@@ -57,34 +68,42 @@ conda activate wine-quality
 python -m ipykernel install --user --name wine-quality --display-name "Python (wine-quality)"
 ```
 
-Verify kernel is registered:
+Verify the kernel is registered:
 ```powershell
 jupyter kernelspec list
 ```
 
-### 5. Install & Configure Ollama (Local LLM)
+### 5. Install Ollama and Pull the Three LLMs
 
-1. **Download & install:** https://ollama.com/download (Windows installer)
+1. **Download & install Ollama:** https://ollama.com/download (Windows installer).
 
-2. **Pull Llama 3.1 8B** (one-time, ~4.7 GB):
-   ```powershell
-   & "C:\Users\$env:USERNAME\AppData\Local\Programs\Ollama\ollama.exe" pull llama3.1:8b
-   ```
-
-3. **Start Ollama server** (runs in background):
+2. **Start the Ollama server in a dedicated PowerShell window** (leave it open for the
+   duration of the run):
    ```powershell
    & "C:\Users\$env:USERNAME\AppData\Local\Programs\Ollama\ollama.exe" serve
    ```
 
-   Leave this PowerShell window open while the notebook runs.
+3. **Pull the three models** (one-time, ~13 GB on disc):
+   ```powershell
+   & "C:\Users\$env:USERNAME\AppData\Local\Programs\Ollama\ollama.exe" pull llama3.1:8b
+   & "C:\Users\$env:USERNAME\AppData\Local\Programs\Ollama\ollama.exe" pull qwen2.5:7b
+   & "C:\Users\$env:USERNAME\AppData\Local\Programs\Ollama\ollama.exe" pull mistral:7b
+   ```
+
+   Verify all three are present:
+   ```powershell
+   curl http://localhost:11434/api/tags
+   ```
+   Should return JSON listing the three models.
 
 ---
 
-## Running the Active Notebook
+## Running the Notebook
 
 ### 1. Open in VSCode
 
-Navigate to `c:\Users\plete\Desktop\Wine-Quality\` and open `wine_quality_classification.ipynb`.
+Navigate to `c:\Users\plete\Desktop\Wine-Quality\` and open
+`wine_llm_comparison.ipynb`.
 
 ### 2. Select Kernel
 
@@ -92,40 +111,17 @@ Click the kernel dropdown (top-right) → select **`Python (wine-quality)`**.
 
 ### 3. Before Running
 
-Make sure Ollama is running (see Setup §5). The notebook will skip the LLM cell gracefully if Ollama is not reachable.
+Confirm the Ollama server is running (Setup §5.2). The Sanity Check cell (§7b) will
+fail-fast if any model is missing or the server is unreachable.
 
 ### 4. Execute Cells in Order
 
-The notebook is organized into 23 sections. Run top-to-bottom — each cell depends on variables defined in earlier cells.
-
----
-
-## Estimated Runtime (RTX 5050)
-
-| Stage | Duration |
-|---|---|
-| Data loading + feature engineering | ~5 min |
-| SBERT encoding (105K reviews) | 15–20 min |
-| Classical models (RF, ET, XGB, LGB, CatBoost, LR) | ~10 min |
-| LightGBM Optuna (200 trials × 5-fold CV) | 60–90 min |
-| CatBoost Optuna (100 trials × 5-fold CV) | 30–45 min |
-| AttentionMLP (200 epochs, early stopping) | ~5 min |
-| TabPFN (8K subsample) | 2–3 min |
-| DistilBERT (10 epochs, max_len 256) | 30–45 min |
-| RoBERTa-base (10 epochs) | 60–90 min |
-| DeBERTa-v3-base (10 epochs) | 90–120 min |
-| LLM CoT + few-shot (1000 samples) | 15–25 min |
-| Stacking (5-fold) + late fusion + viz | ~15 min |
-| **Total** | **~6–8 hours** |
-
-To speed things up, reduce `OPTUNA_TRIALS_LGB`, `OPTUNA_TRIALS_CAT`, `NUM_EPOCHS_BASE`, or skip transformers individually.
+Run top-to-bottom the main sweep cell (§8) and the self-consistency cell (§9) are the
+long ones; everything else completes within minutes.
 
 ---
 
 ## Troubleshooting
-
-### `[transformers] LOAD REPORT` warnings
-Informational only — emitted when fine-tuning a pretrained encoder for a downstream classification task. The classification head (`pre_classifier`, `classifier`) is newly initialized; the language modeling head is dropped. The notebook silences these with `transformers.logging.set_verbosity_error()`.
 
 ### `ollama: command not found` (Git Bash / MINGW64)
 Git Bash doesn't inherit Windows `PATH`. Use **PowerShell** instead:
@@ -141,12 +137,24 @@ python -m ipykernel install --user --name wine-quality --display-name "Python (w
 ```
 Then `Ctrl+Shift+P` → "Developer: Reload Window".
 
-### LLM cell hangs on first call
-First inference loads the 4.7 GB model into RAM (~10–20 s). Subsequent calls are fast (~2–5 s each). Verify Ollama is reachable:
+### Model swap is slow during the sweep
+Ollama unloads a model from VRAM when a different one is requested, which can take
+10–30 s on first reload. This is expected on 8 GB VRAM. The sweep loops outermost over
+models so each model is loaded only once for its three strategies.
+
+### LLM cell hangs on the first call of each model
+First inference loads the 4–5 GB model file into RAM/VRAM (~10–20 s). Subsequent calls
+of the same model are fast (~2–5 s each). Verify Ollama is reachable:
 ```powershell
 curl http://localhost:11434/api/tags
 ```
-Should return JSON listing `llama3.1:8b`.
+Should return JSON listing all three models.
+
+### High parse-failure count in a particular run
+The notebook's three-stage regex parser tolerates JSON, "label: N" prose, and lone
+digits. If a particular model still produces unparseable output frequently, inspect the
+first 50 raw outputs in the saved `llm_runs.pkl` to refine `format_exemplar()` or the
+system prompt.
 
 ---
 
@@ -154,8 +162,14 @@ Should return JSON listing `llama3.1:8b`.
 
 ```
 Wine-Quality/
-├── README.md                           ← You are here
-└── wine_quality_classification.ipynb   ← high-accuracy notebook
+├── README.md                       ← You are here
+├── paper.tex                       ← IEEE conference paper draft
+├── wine_llm_comparison.ipynb       ← The notebook
+├── llm_results.csv                 ← Generated metrics table
+├── llm_runs.pkl                    ← Raw run metadata (first 50 model outputs each)
+├── llm_accuracy_comparison.png     ← Generated bar chart
+├── llm_accuracy_heatmap.png        ← Generated heat-map
+└── llm_confusion_matrices.png      ← Generated grid of confusion matrices
 ```
 
 ---
@@ -164,15 +178,14 @@ Wine-Quality/
 
 | Package | Purpose |
 |---|---|
-| `torch` 2.x (cu128) | Deep learning backbone |
-| `transformers` | Text encoders (DistilBERT, RoBERTa, DeBERTa-v3) |
-| `sentence-transformers` | Frozen MPNet sentence embeddings |
-| `optuna` | Bayesian hyperparameter search (TPE sampler) |
-| `lightgbm`, `xgboost`, `catboost` | Gradient boosting |
-| `tabpfn` | Pretrained tabular foundation model (optional) |
+| `torch` 2.x (cu128) | GPU backend for SBERT |
+| `sentence-transformers` | Frozen MPNet sentence embeddings (used only for kNN retrieval) |
+| `ollama` | Local LLM inference (Llama 3.1, Qwen 2.5, Mistral) |
 | `datasets` | HuggingFace dataset loading |
-| `ollama` | Local LLM inference (Llama 3.1 8B) |
-| `scikit-learn` | Classical ML, stacking, metrics |
+| `scikit-learn` | Metrics (accuracy, F1, kappa, MCC, confusion matrix) |
+| `scipy` | Spearman rank correlation |
+| `pandas`, `numpy` | Tabular data handling |
+| `matplotlib`, `seaborn` | Plots |
 
 ---
 
@@ -180,10 +193,16 @@ Wine-Quality/
 
 Novel aspects compared to prior wine quality classification literature:
 
-1. **Tabular foundation model on wine quality** — first application of TabPFN.
-2. **Sentence embeddings as tabular features** — frozen MPNet vectors fused into the gradient-boosted feature space (3,781-dim total).
-3. **Out-of-fold smoothed target encoding** for high-cardinality categoricals (country, region, variety) under leak-safe cross-validation.
-4. **Layer-wise learning-rate decay + cosine warmup + fp16** chained with Bayesian optimization for fair transformer / GBDT comparison.
-5. **Few-shot LLM zero-shot baseline** with chain-of-thought prompting (Llama 3.1 8B local).
-6. **Calibration & ordinal metrics suite** (ECE, Brier, MCC, Spearman ρ, ordinal MAE, Rank Acc ±1) absent from prior wine quality work.
-7. **Multimodal late fusion** of stacking ensemble + best text transformer under three combination strategies (avg, weighted, max-confidence).
+1. **First side-by-side comparison** of three open-weights instruction-tuned LLMs at
+   the same parameter scale (7–8 B) on wine quality classification, isolating the
+   effect of model lineage from prompt design.
+2. **Retrieval-augmented few-shot CoT** with semantic-similarity exemplar selection,
+   benchmarked against both zero-shot and random few-shot baselines under a unified
+   prompt template.
+3. **Self-consistency voting** as a final boost on the winning model-strategy
+   combination, marginalising single-shot stochasticity.
+4. **Robust three-stage output parser** (strict-JSON regex → keyword regex → digit
+   fallback) that achieves near-zero parse-failure rate where naive single-character
+   parsing collapses LLM accuracy to chance level.
+5. **Ordinal-aware metric suite** (Cohen's κ, MCC, Spearman ρ, ordinal MAE, Rank-Acc
+   ±1) absent from prior wine-quality LLM literature.
