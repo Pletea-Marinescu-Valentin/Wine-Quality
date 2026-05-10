@@ -137,51 +137,6 @@ The sentence encoder is **BAAI/bge-large-en-v1.5** (1024-dim, frozen). It ranks 
 on MTEB retrieval sub-tasks than the more common all-mpnet-base-v2 and is used here
 solely to drive class-balanced kNN retrieval for the retrieval-augmented prompt.
 
----
-
-## Estimated Runtime (RTX 5050 Laptop, 8 GB VRAM)
-
-| Stage | Duration |
-|---|---|
-| Data load + binning + stratified subsampling                 | ~30 s    |
-| BGE embedding of retrieval pool (3000) + test subset (100)    | ~30 s    |
-| Sanity check (1 call per model)                               | ~30 s    |
-| Sweep Qwen-2.5-14B (3 strategies × 100 calls)               | ~7 min   |
-| Sweep Gemma-3-12B (3 strategies × 100 calls)                | ~7 min   |
-| Sweep Mistral-Nemo-12B (3 strategies × 100 calls)           | ~3 h*    |
-| Self-consistency on winning combo (300 calls)                 | ~3 min   |
-| Metrics + plots + CSV / pickle / LaTeX export                 | ~30 s    |
-| **Total**                                                     | **~3.6 h** |
-
-\* Mistral-Nemo-12B inference latency scales super-linearly with prompt-context length
-on the 8 GB VRAM accelerator: zero-shot took 8.8 min, retrieval-augmented (6 exemplars)
-took 59.8 min, random few-shot (12 exemplars) took 109.2 min. The cause is KV-cache
-spillover from VRAM to system RAM via Ollama's partial CPU-offload mechanism. Qwen
-and Gemma do not exhibit the same dispersion, suggesting a smaller per-token KV-cache
-footprint or a more aggressive memory layout in those backbones.
-
-To shorten the run, reduce `N_TEST_EVAL` from 100 to 50 (cuts runtime by 2× at the
-cost of larger metric variance), or skip Mistral-Nemo's few-shot strategy.
-
----
-
-## Outputs
-
-After running cells 10–13, the following artefacts are written next to the notebook:
-
-| File | Contents |
-|---|---|
-| `llm_results.csv`              | full metrics table (10 rows × 12 columns) |
-| `llm_runs.pkl`                 | pickled runs metadata + first 50 raw model outputs per run |
-| `llm_accuracy_comparison.png`  | horizontal bar chart of accuracy per (model, strategy) |
-| `llm_accuracy_heatmap.png`     | model × strategy accuracy heat-map (single-shot only) |
-| `llm_confusion_matrices.png`   | grid of confusion matrices, one per (model, strategy) |
-
-The cell 13 print also emits a LaTeX-formatted version of the metrics table that can
-be pasted directly into the paper's results section.
-
----
-
 ## Troubleshooting
 
 ### `ollama: command not found` (Git Bash / MINGW64)
@@ -224,7 +179,6 @@ Wine-Quality/
 ├── README.md                       ← You are here
 ├── wine_llm_comparison.ipynb       ← The notebook
 ├── llm_results.csv                 ← Generated metrics table
-├── llm_runs.pkl                    ← Raw run metadata
 ├── llm_accuracy_comparison.png     ← Generated bar chart
 ├── llm_accuracy_heatmap.png        ← Generated heat-map
 └── llm_confusion_matrices.png      ← Generated grid of confusion matrices
