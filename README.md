@@ -222,7 +222,6 @@ loaded only once for its three strategies.
 ```
 Wine-Quality/
 ├── README.md                       ← You are here
-├── paper.tex                       ← IEEE conference paper draft
 ├── wine_llm_comparison.ipynb       ← The notebook
 ├── llm_results.csv                 ← Generated metrics table
 ├── llm_runs.pkl                    ← Raw run metadata
@@ -279,18 +278,6 @@ Novel aspects compared to prior wine-quality classification literature:
    prompt-context length is the dominant determinant of inference cost
    (zero-shot 8.8 min vs few-shot 109.2 min for the same Mistral-Nemo-12B model),
    driven by KV-cache spillover under Ollama's partial CPU-offload mechanism.
-
----
-
-## Contact
-
-- **Hardware:** RTX 5050 Laptop GPU (8 GB VRAM) + Intel Core i7 (16 cores). Lower-spec
-  GPUs will work, Ollama can offload more aggressively to CPU at the cost of higher
-  per-call latency.
-- **Inference:** runs entirely locally via Ollama; no API keys or external service
-  costs.
-- **Reproducibility:** all sampling and shuffling fixed by `RANDOM_SEED = 42`; the
-  predefined train/val/test splits of the dataset are used verbatim.
 
 ---
 
