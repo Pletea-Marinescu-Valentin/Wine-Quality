@@ -1,0 +1,4 @@
+config,accuracy,f1_macro,n
+"pool=3000, K=6 (original)",0.7867,0.5572,300
+"pool=71504 (full train), K=6",0.84,0.6128,300
+"pool=71504 (full train), K=12",0.7933,0.6559,300

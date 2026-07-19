@@ -1,0 +1,12 @@
+comparison,acc_A,acc_B,delta_pp,A_ok_B_wrong,A_wrong_B_ok,p_value,significant_0.05
+Qwen-2.5-14B: retrieval vs zero_shot,0.8064,0.7864,2.0,48,38,0.33183,False
+Qwen-2.5-14B: retrieval vs retrieval_global,0.8064,0.8463,-4.0,22,42,0.01686,True
+Qwen-2.5-14B: retrieval vs fewshot_random,0.8064,0.7006,10.6,91,38,0.0,True
+Mistral-Nemo-12B: retrieval vs zero_shot,0.8623,0.7824,8.0,70,30,8e-05,True
+Mistral-Nemo-12B: retrieval vs retrieval_global,0.8623,0.8423,2.0,25,15,0.15386,False
+Mistral-Nemo-12B: retrieval vs fewshot_random,0.8623,0.8044,5.8,62,33,0.00383,True
+Gemma-3-12B: retrieval vs zero_shot,0.8263,0.7904,3.6,48,30,0.05354,False
+Gemma-3-12B: retrieval vs retrieval_global,0.8263,0.8683,-4.2,19,40,0.00864,True
+Gemma-3-12B: retrieval vs fewshot_random,0.8263,0.7864,4.0,48,28,0.02863,True
+Gemma-3-12B (retrieval_global) vs TF-IDF + LogReg,0.8683,0.8543,1.4,33,26,0.43499,False
+Gemma-3-12B: retrieval_global vs self-consistency,0.8683,0.8523,1.6,11,3,0.05737,False
