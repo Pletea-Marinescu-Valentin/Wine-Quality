@@ -1,8 +1,9 @@
-# Improved Machine Learning Pipeline for Enhanced Wine Quality Classification
+# AI4WINE: A Generative Machine Learning Benchmark for Wine Quality Classification
 
-IEEE conference paper benchmarking three open-weights instruction-tuned local LLMs in
-the 12–14 B parameter range on a 3-class wine quality classification task, across four
-prompting strategies of increasing sophistication.
+Benchmark of three open-weights instruction-tuned local LLMs (12–14 B parameters) on a
+3-class ordinal wine quality classification task over expert review text, across four
+prompting strategies, with protocol-matched supervised baselines, bootstrap confidence
+intervals, and exact McNemar significance tests.
 
 **Models compared** (all served via Ollama at Q4\_K\_M quantisation):
 - **Qwen-2.5-14B-Instruct** (Alibaba)
@@ -12,13 +13,19 @@ prompting strategies of increasing sophistication.
 **Prompting strategies:**
 - Zero-shot
 - Few-shot with K=4 random exemplars per class (12 demonstrations total)
-- Retrieval-Augmented few-shot, class-balanced (K=6, top-2 per class via BGE cosine similarity)
+- Retrieval-Augmented few-shot, **class-balanced** (K=6, top-2 per class via BGE cosine similarity)
+- Retrieval-Augmented few-shot, **global top-K** (K=6, nearest neighbours regardless of class)
 - Self-consistency (majority vote over N=3 sampled completions, temp=0.6) applied to the
   highest-accuracy single-shot cell
 
-**Active dataset:** [`james-burton/wine_reviews_ordinal`](https://huggingface.co/datasets/james-burton/wine_reviews_ordinal)
-105154 expert wine reviews from WineMag.com (Burton 2023, originally compiled by
-Thoutt 2017), with predefined train / val / test splits (71504 / 12619 / 21031).
+**Supervised baselines** (evaluated under the identical input serialisation and test protocol):
+majority-class, TF-IDF + Logistic Regression (default and class-balanced).
+
+**Dataset:** [`james-burton/wine_reviews_ordinal`](https://huggingface.co/datasets/james-burton/wine_reviews_ordinal)
+— 105 154 expert wine reviews from WineMag.com (Burton 2023, originally compiled by
+Thoutt 2017), with predefined train / val / test splits (71 504 / 12 619 / 21 031). The
+integer `variety` code (0–29) is decoded to grape-variety names via the sibling
+`james-burton/wine_reviews` release (verified by joining on review text).
 
 **Task:** 3-class quality classification (Low / Medium / High) via WineEnthusiast
 editorial tiers collapsed onto fixed thresholds:
@@ -29,19 +36,25 @@ editorial tiers collapsed onto fixed thresholds:
 | 1 - Medium | 83–90 | good + very good            | 70.3% |
 | 2 - High   | 91+   | excellent + superb + classic | 27.4% |
 
-**Hardware:** Intel Core i7 (16 cores) + NVIDIA GeForce RTX 5050 Laptop GPU (8 GB VRAM),
+**Hardware:** Intel Core 7 240H (16 cores) + NVIDIA GeForce RTX 5050 Laptop GPU (8 GB VRAM),
 CUDA 12.8.
 
 ---
 
 ## Headline Result
 
-The best single configuration is **Mistral-Nemo-12B with retrieval-augmented few-shot**,
-attaining **0.900 accuracy** on the 100-sample stratified test subset (κ = 0.760,
-MCC = 0.765, weighted F₁ = 0.898, macro F₁ = 0.851). This is achieved with **no
-fine-tuning** only prompt engineering on a frozen Q4-quantised model and matches the
-89.12 % binary accuracy of the dedicated fine-tuned BERT baseline of Katumullage et al.
-(2022) on the related Wine Spectator corpus.
+The best single configuration is **Gemma-3-12B with global retrieval-augmented prompting**,
+attaining **0.868 accuracy** (95% CI [0.838, 0.896]) on the stratified 500-review test
+subsample, together with the **highest macro-F₁ (0.744)** of every system evaluated —
+LLM or supervised (κ = 0.678, MCC = 0.683, weighted F₁ = 0.865). Mistral-Nemo-12B with
+class-balanced retrieval follows closely at 0.862.
+
+These results are obtained with **no fine-tuning** — only prompt engineering on frozen
+Q4-quantised models. Retrieval augmentation lifts Mistral-Nemo-12B by 8.0 pp over
+zero-shot (exact McNemar p < 0.001), and the strongest prompted LLMs reach **statistical
+parity** (p = 0.435) with a TF-IDF + logistic-regression baseline trained on the full
+71.5k-review corpus. Comparisons with fine-tuned encoder results reported in prior work
+use different corpora and protocols and are treated as context, not head-to-head.
 
 ---
 
@@ -103,39 +116,44 @@ python -m ipykernel install --user --name wine-quality --display-name "Python (w
    ```
    Should return JSON listing the three models.
 
-   At Q4\_K\_M each model is roughly 7–9 GB, so weights effectively occupy the entire
-   8 GB VRAM. Ollama swaps models on demand between the three families, and may
-   partially offload the KV cache to system RAM under longer prompts (see
-   *Inference latency* note below).
-
 ---
 
 ## Running the Notebook
 
 1. Open `wine_llm_comparison.ipynb` in VSCode and select the
    **Python (wine-quality)** kernel.
-2. Confirm the Ollama server is running (Setup §5.2). Cell 7b (Sanity Check) fails
+2. Confirm the Ollama server is running (Setup §5.2). The Sanity Check cell (§7b) fails
    fast if any model is unreachable.
-3. Run cells top-to-bottom. The main sweep cell (§8) and the self-consistency cell
-   (§9) are the long ones; everything else completes within a few minutes.
+3. Run cells top-to-bottom. Encoding the full 71.5k-review retrieval pool (§5) takes
+   ~10 minutes on the GPU; the main sweep (§8) is the long stage (~2–3 h total). Every
+   completed (model, strategy) run is checkpointed to `llm_runs_checkpoint.pkl`, so an
+   interrupted run resumes where it left off on re-execution.
 
 ---
 
-## Configuration Knobs (cell 5)
+## Configuration Knobs (configuration cell)
 
 | Constant | Value | Notes |
 |---|---|---|
-| `N_TEST_EVAL`       | 100   | class-proportional test subset size (2 / 70 / 28) |
-| `N_RETRIEVAL_POOL`  | 3000  | class-proportional retrieval pool size (68 / 2110 / 822) |
-| `FEWSHOT_K_RANDOM`  | 4     | random exemplars per class for the few-shot strategy |
-| `RETRIEVAL_K`       | 6     | retrieved exemplars total (2 per class, class-balanced) |
-| `SC_NUM_SAMPLES`    | 3     | self-consistency votes |
-| `SC_TEMPERATURE`    | 0.6   | sampling temperature for self-consistency |
-| `RANDOM_SEED`       | 42    | reproducibility seed for sampling and shuffling |
+| `N_TEST_EVAL`       | 500    | class-proportional test subset size (realised 501: 11 / 352 / 138) |
+| `N_RETRIEVAL_POOL`  | `None` | `None` uses the full training split (71 504) as the retrieval pool |
+| `FEWSHOT_K_RANDOM`  | 4      | random exemplars per class for the few-shot strategy |
+| `RETRIEVAL_K`       | 6      | retrieved exemplars total (2 per class for balanced, top-6 for global) |
+| `NUM_CTX`           | 4096   | serving context window; prevents silent truncation of long prompts |
+| `SC_NUM_SAMPLES`    | 3      | self-consistency votes |
+| `SC_TEMPERATURE`    | 0.6    | sampling temperature for self-consistency |
+| `N_BOOTSTRAP`       | 10000  | resamples for bootstrap confidence intervals |
+| `N_LOW_DIAG`        | 100    | extra minority-class (Low) diagnostic subset size |
+| `RANDOM_SEED`       | 42     | reproducibility seed for sampling and shuffling |
 
-The sentence encoder is **BAAI/bge-large-en-v1.5** (1024-dim, frozen). It ranks higher
-on MTEB retrieval sub-tasks than the more common all-mpnet-base-v2 and is used here
-solely to drive class-balanced kNN retrieval for the retrieval-augmented prompt.
+The pool size was selected on the **validation split** (`llm_pool_validation.csv`): the
+full training pool beat a 3 000-review stratified subsample by +5.3 pp accuracy, and
+K = 12 exemplars lost to K = 6, so K = 6 is retained.
+
+The sentence encoder is **BAAI/bge-large-en-v1.5** (1024-dim, frozen), driving both the
+class-balanced and global kNN retrieval.
+
+---
 
 ## Troubleshooting
 
@@ -156,19 +174,18 @@ Then `Ctrl+Shift+P` → "Developer: Reload Window".
 ### Sanity check returns empty output for a model
 Symptom: `[OK] Qwen-2.5-14B latency=1.4s pred=None raw=''` (empty string).
 Cause: model warm-up race condition on first call after a cold load into VRAM.
-Workaround: re-run cell 7b once, or simply proceed to the main sweep, the empty
-return is intermittent and parses cleanly during the actual sweep.
+Workaround: re-run the sanity check cell once; the empty return is intermittent and
+parses cleanly during the actual sweep.
 
-### Mistral-Nemo few-shot is hours long
-Expected behaviour on 8 GB VRAM with 12 in-context exemplars (random few-shot prompts
-exceed ~4 kB and trigger KV-cache offload to system RAM). If you cannot afford the
-runtime, lower `FEWSHOT_K_RANDOM` from 4 to 2 (drops total exemplars from 12 to 6 and
-brings latency in line with the retrieval-augmented strategy).
+### Prompts appear truncated / few-shot underperforms
+Ollama's default context window (2048 tokens) silently truncates the *start* of longer
+prompts, cutting into the system prompt. `NUM_CTX = 4096` in the configuration cell
+covers every prompt in this notebook (max ~2.3k tokens); do not lower it.
 
 ### Model swap is slow during the sweep
 Ollama unloads a model from VRAM when a different one is requested, which can take
-10–30 s on first reload. The sweep loops outermost over models so each model is
-loaded only once for its three strategies.
+10–30 s on first reload. The sweep loops outermost over models so each model is loaded
+only once for all its strategies.
 
 ---
 
@@ -178,10 +195,17 @@ loaded only once for its three strategies.
 Wine-Quality/
 ├── README.md                       ← You are here
 ├── wine_llm_comparison.ipynb       ← The notebook
-├── llm_results.csv                 ← Generated metrics table
-├── llm_accuracy_comparison.png     ← Generated bar chart
-├── llm_accuracy_heatmap.png        ← Generated heat-map
-└── llm_confusion_matrices.png      ← Generated grid of confusion matrices
+├── worked_example.md               ← Full end-to-end prompt example (input → prompt → output)
+├── llm_results.csv                 ← Main metrics table (all configurations)
+├── llm_stats_ci.csv                ← Bootstrap 95% confidence intervals
+├── llm_stats_mcnemar.csv           ← Paired McNemar significance tests
+├── llm_per_class.csv               ← Per-class precision / recall / F1
+├── llm_low_diagnostic.csv          ← Minority-class (Low) recall diagnostic
+├── llm_pool_validation.csv         ← Retrieval-pool size selection (validation split)
+├── llm_runs.pkl                    ← Raw run metadata + first 50 outputs per run
+├── llm_accuracy_comparison.png     ← Accuracy bar chart
+├── llm_accuracy_heatmap.png        ← Model × strategy accuracy heat-map
+└── llm_confusion_matrices.png      ← Grid of confusion matrices
 ```
 
 ---
@@ -194,45 +218,37 @@ Wine-Quality/
 | `sentence-transformers`     | Frozen BGE sentence embeddings (kNN retrieval only) |
 | `ollama`                    | Local LLM inference (Qwen 2.5, Mistral-Nemo, Gemma 3) |
 | `datasets`                  | HuggingFace dataset loading |
-| `scikit-learn`              | Metrics (accuracy, F1, kappa, MCC, confusion matrix) |
-| `scipy`                     | Spearman rank correlation |
+| `scikit-learn`              | Metrics + TF-IDF / logistic-regression baselines |
+| `scipy`                     | Bootstrap CIs, McNemar tests, Spearman correlation |
 | `pandas`, `numpy`           | Tabular data handling |
 | `matplotlib`, `seaborn`     | Plots |
 
 ---
 
-## Paper Contributions
+## Contributions
 
-Novel aspects compared to prior wine-quality classification literature:
-
-1. **First side-by-side comparison** of three open-weights instruction-tuned LLMs from
-   different lineages (Alibaba / Mistral AI / Google) at the 12–14 B parameter scale on
-   wine quality classification, isolating the effect of model lineage from prompt design.
-2. **Class-balanced retrieval-augmented few-shot** prompting (top-2 per class via BGE
-   cosine similarity), which lifts Mistral-Nemo-12B accuracy from 0.830 (zero-shot) to
-   **0.900** (+7.0 pp) and avoids the failure mode of pure global top-K retrieval under
-   the heavy training-pool class imbalance.
-3. **Quality-tier binning** derived from the WineEnthusiast editorial rubric, mapping
-   the six published tiers (acceptable / good / very good / excellent / superb /
-   classic) onto a coarser three-class partition that respects the magazine's own
-   thresholds rather than a fitted percentile-based scheme.
-4. **Single-digit output protocol with simplified regex parsing** in place of the
-   structured-JSON convention common in the literature, eliminating format-drift
-   parse failures across heterogeneous LLM backbones (zero parse failures across
-   1,000 deterministic responses in our runs).
-5. **Honest reporting of self-consistency on saturated cells**: applied to the
-   strongest single-shot configuration (Mistral-Nemo retrieval, 0.900), self-consistency
-   *decreased* accuracy to 0.870, illustrating that stochastic resampling at τ = 0.6
-   helps only when the deterministic baseline is uncertain (≲ 0.80 accuracy).
-6. **Ordinal-aware metric suite** (Cohen's κ, MCC, Spearman ρ, ordinal MAE, Rank-Acc
-   ±1) reported alongside accuracy and F₁, with a dedicated caveats section that
-   addresses class-imbalance-induced metric saturation (e.g., RankAcc±1 = 1.000 across
-   all configurations is partially degenerate when class 0 has only 2 test samples).
-7. **Operational latency analysis** showing that on a 8 GB VRAM consumer accelerator,
-   prompt-context length is the dominant determinant of inference cost
-   (zero-shot 8.8 min vs few-shot 109.2 min for the same Mistral-Nemo-12B model),
-   driven by KV-cache spillover under Ollama's partial CPU-offload mechanism.
-
----
-
-Last updated: May 2026
+1. **Controlled balanced-vs-global retrieval ablation.** Class-balanced (top-2 per class)
+   and global (top-6) exemplar selection share an identical prompt, isolating the specific
+   effect of class balancing. Its sign is model-dependent: global retrieval is
+   significantly better for Gemma-3 and Qwen-2.5, while balancing helps Mistral-Nemo.
+2. **Corpus-informed system prompt.** Statistical priors (class base rates, a price ladder,
+   a review-length ladder, grape-variety and origin priors, discriminative descriptors)
+   are measured **exclusively on the training split** and stated in the prompt as guidance.
+3. **Protocol-matched supervised baselines.** Majority-class and TF-IDF + logistic
+   regression are evaluated on the exact same serialised input and test subset as the
+   LLMs, giving a fair reference point; the strongest prompted LLMs reach statistical
+   parity with a model trained on the full corpus.
+4. **Statistical validation.** Every headline comparison is reported with a bootstrap 95%
+   confidence interval and an exact paired McNemar test, rather than raw point estimates.
+5. **Quality-tier binning** from the WineEnthusiast editorial rubric, mapping the six
+   published tiers onto a three-class partition that respects the magazine's own
+   thresholds rather than a fitted percentile scheme.
+6. **Single-digit output protocol** with simplified regex parsing in place of the
+   structured-JSON convention, eliminating format-drift parse failures across
+   heterogeneous LLM backbones (zero parse failures across all deterministic responses).
+7. **Honest self-consistency finding.** Applied to the strongest cell, self-consistency
+   *decreased* accuracy (0.868 → 0.852): without chain-of-thought to marginalise over,
+   stochastic resampling adds decoding noise rather than exploring alternative reasoning.
+8. **Minority-class diagnostic.** A dedicated 100-review Low-class evaluation with Wilson
+   confidence intervals surfaces the remaining gap between the LLMs and the balanced
+   supervised baseline on the rare class.
